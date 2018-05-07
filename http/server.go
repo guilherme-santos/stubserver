@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"html/template"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/foodora/go-ranger/fdhttp"
@@ -146,10 +148,13 @@ func (h *Handler) findEndpoint(method string, reqURL *url.URL, reqHeader http.He
 	return endpointFound.Endpoint
 }
 
-func templateBody(w http.ResponseWriter, req *http.Request, endpoint *stubserver.ConfigRequest, body io.Reader) io.Reader {
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(body)
-	tmpl := template.Must(template.New("body").Parse(buf.String()))
+func templateBody(w http.ResponseWriter, req *http.Request, endpoint *stubserver.ConfigRequest, r io.Reader) io.Reader {
+	if r == nil {
+		return nil
+	}
+
+	b, _ := ioutil.ReadAll(r)
+	tmpl := template.Must(template.New("body").Parse(string(b)))
 
 	data := map[string]interface{}{}
 
@@ -168,9 +173,49 @@ func templateBody(w http.ResponseWriter, req *http.Request, endpoint *stubserver
 	}
 	data["Request"] = req
 
-	buf.Reset()
+	buf := new(bytes.Buffer)
 	tmpl.Execute(buf, data)
 	return buf
+}
+
+func extractHeader(r io.Reader) (int, http.Header, io.Reader) {
+	buf := new(bytes.Buffer)
+	tee := io.TeeReader(r, buf)
+
+	var statusCode int
+	header := http.Header{}
+
+	validHTTPProtocol := regexp.MustCompile(`^HTTP/[1-9](.[1-9])? ([245][0-9][0-9])`)
+
+	body := bufio.NewReader(tee)
+	for {
+		line, _ := body.ReadString('\n')
+		if line == "" || line == "\n" {
+			// empty line means we read all headers
+			break
+		}
+
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			// it's a comment ignore it
+			continue
+		}
+
+		if statusCode == 0 {
+			if validHTTPProtocol.MatchString(line) {
+				statusCode, _ = strconv.Atoi(validHTTPProtocol.FindStringSubmatch(line)[2])
+			}
+		} else {
+			parts := strings.SplitN(line, ":", 2)
+			header.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+		}
+	}
+
+	if statusCode == 0 {
+		// No headers available let's return the original content
+		return 0, nil, buf
+	}
+
+	return statusCode, header, body
 }
 
 func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
@@ -180,6 +225,7 @@ func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
 			"error":   "not_found",
 			"message": "didn't match with any endpoint",
 		})
+		return
 	}
 
 	var body io.Reader
@@ -195,7 +241,18 @@ func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
 				})
 			}
 
-			body = f
+			var (
+				statusCode int
+				header     http.Header
+			)
+
+			statusCode, header, body = extractHeader(f)
+			if statusCode != 0 {
+				endpoint.Response.StatusCode = statusCode
+			}
+			if len(header) > 0 {
+				endpoint.Response.Headers = header
+			}
 		} else {
 			body = bytes.NewBufferString(endpoint.Response.Data)
 		}
@@ -205,10 +262,11 @@ func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
 				w.Header().Add(k, v)
 			}
 		}
+	}
 
-		w.WriteHeader(endpoint.Response.StatusCode)
-
-		body := templateBody(w, req, endpoint, body)
+	w.WriteHeader(endpoint.Response.StatusCode)
+	if body != nil {
+		body = templateBody(w, req, endpoint, body)
 		io.Copy(w, body)
 	}
 }
