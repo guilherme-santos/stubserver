@@ -1,0 +1,49 @@
+endpoints:
+  - url: /users
+    method: GET
+    headers:
+      X-Version: 1
+    response: '<users><user id="1" first_name="Guilherme" last_name="Silveira"/><user id="2" first_name="Guilherme" last_name="Santos"/></users>'
+
+  - url: /users
+    method: GET
+    headers:
+      X-Version: 2
+      Accept:
+        - application/json
+    response:
+      headers:
+        Content-Type: application/json
+      statuscode: 201
+      data: '[{"id":1,"name":"Guilherme Silveira"},{"id":2,"name":"Guilherme Santos"}]'
+
+  - url: /users
+    method: POST
+    headers:
+    response:
+      headers:
+        Location: /users/3
+      statuscode: 201
+      data: '{"id":3,"name":"Wilhelm"}'
+
+  - url: /users?last_name=Santos
+    method: GET
+    headers:
+      Accept:
+        - application/json
+    response: '[{"id":2,"name":"Guilherme Santos"}]'
+
+  - url: /users?last_name=
+    method: GET
+    headers:
+      Accept:
+        - application/json
+    response: '[{"id":2,"name":"Guilherme {{.QueryString[last_name]}}"}]'
+
+  - url: ~/users/[0-9]
+    method: GET
+    headers:
+      Accept:
+        - application/json
+    response: '[{"id":{{.RouteParam[0]}},"name":"Guilherme Silveira"}]'
+
