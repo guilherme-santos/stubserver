@@ -1,0 +1,15 @@
+HTTP/1.1 201 Created
+Date: Mon, 07 May 2018 19:22:13 GMT
+Expires: -1
+Cache-Control: private, max-age=0
+Content-Type: text/html; charset=ISO-8859-1
+Server: gws
+Vary: Accept-Encoding
+
+<!DOCTYPE html>
+<html>
+    <body>
+        <h1>My First Heading</h1>
+        <p>My first paragraph.</p>
+    </body>
+</html>
