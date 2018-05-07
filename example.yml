@@ -38,12 +38,12 @@ endpoints:
     headers:
       Accept:
         - application/json
-    response: '[{"id":2,"name":"Guilherme {{.QueryString[last_name]}}"}]'
+    response: '[{"id":2,"name":"Guilherme {{ .Query.last_name }}"}]'
 
-  - url: ~/users/[0-9]
+  - url: ~/users/([0-9])
     method: GET
     headers:
       Accept:
         - application/json
-    response: '[{"id":{{.RouteParam[0]}},"name":"Guilherme Silveira"}]'
+    response: '[{"id":{{ index .RouteParam 0 }},"name":"Guilherme Silveira"}]'
 
