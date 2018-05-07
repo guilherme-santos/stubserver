@@ -18,6 +18,10 @@ var cfgFile string
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Run http server",
+	PreRun: func(cmd *cobra.Command, args []string) {
+		// TODO: check if envvar exists but don't override flag command
+		os.Getenv("STUBSERVER_PORT")
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		f, err := os.Open(args[0])
 		if err != nil {
@@ -35,8 +39,12 @@ var serveCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		handler := http.NewHandler(cfg)
 		router := fdhttp.NewRouter()
+
+		logMiddleware := fdhttp.NewLogMiddleware()
+		router.Use(logMiddleware.Middleware())
+
+		handler := http.NewHandler(cfg)
 		router.Register(handler)
 
 		srv := fdhttp.NewServer(os.Getenv("STUBSERVER_PORT"))
