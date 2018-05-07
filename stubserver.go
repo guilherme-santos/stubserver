@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	yaml "gopkg.in/yaml.v2"
@@ -28,68 +29,64 @@ type ConfigResponse struct {
 	Data       string
 }
 
+// UnmarshalYAML need to map to a totally different struct to be able receive the format
+// that we expect.
 func (c *ConfigRequest) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type Orig ConfigRequest
 	hack := struct {
-		*Orig
+		URL      string
+		Method   string
 		Headers  yaml.MapSlice
-		Response interface{} // can be string or ConfigResponse
-	}{
-		Orig: (*Orig)(c),
-	}
+		Response ConfigResponse
+	}{}
 
-	err := unmarshal(&hack)
-	if err != nil {
+	if err := unmarshal(&hack); err != nil {
 		return err
 	}
 
-	_, err = url.ParseRequestURI(c.URL)
-	if err != nil {
-		return fmt.Errorf("url is not valid: %s", err)
+	hack.URL = strings.TrimSpace(hack.URL)
+	// if is not regex validate URL
+	if !strings.HasPrefix(hack.URL, "~") {
+		_, err := url.ParseRequestURI(hack.URL)
+		if err != nil {
+			return fmt.Errorf("url '%s' is not valid: %s", c.URL, err)
+		}
 	}
-	if c.Method == "" {
-		c.Method = "GET"
-	}
-
-	c.URL = strings.TrimSpace(c.URL)
+	c.URL = hack.URL
+	c.Method = hack.Method
+	c.Headers = http.Header{}
+	c.Response = hack.Response
 
 	return mapSliceToHeader(hack.Headers, c.Headers)
 }
 
 func (r *ConfigResponse) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var data string
-	err := unmarshal(&data)
-	if err == nil {
+
+	if err := unmarshal(&data); err == nil {
+		r.StatusCode = http.StatusOK
 		r.Headers = http.Header{}
 		r.Data = data
 		return nil
 	}
 
-	type Orig ConfigResponse
 	hack := struct {
-		*Orig
-		Headers yaml.MapSlice
-	}{
-		Orig: (*Orig)(r),
-	}
+		Headers    yaml.MapSlice
+		StatusCode int
+		Data       string
+	}{}
 
-	err = unmarshal(&hack)
-	if err != nil {
+	if err := unmarshal(&hack); err != nil {
 		return err
 	}
 
-	if r.StatusCode == 0 {
-		r.StatusCode = http.StatusOK
-	}
+	r.Headers = http.Header{}
+	r.StatusCode = hack.StatusCode
+	r.Data = hack.Data
 
 	return mapSliceToHeader(hack.Headers, r.Headers)
 }
 
 func mapSliceToHeader(mapSlice yaml.MapSlice, header http.Header) error {
-	if header == nil {
-		header = http.Header{}
-	}
-
 	for _, kv := range mapSlice {
 		key := kv.Key.(string)
 
@@ -97,11 +94,18 @@ func mapSliceToHeader(mapSlice yaml.MapSlice, header http.Header) error {
 			header.Set(key, str)
 			continue
 		}
+		if i, ok := kv.Value.(int); ok {
+			header.Set(key, strconv.Itoa(i))
+			continue
+		}
 
 		if arr, ok := kv.Value.([]interface{}); ok {
 			for _, v := range arr {
-				v := v.(string)
-				header.Add(key, v)
+				if str, ok := v.(string); ok {
+					header.Add(key, str)
+				} else if i, ok := v.(int); ok {
+					header.Add(key, strconv.Itoa(i))
+				}
 			}
 			continue
 		}

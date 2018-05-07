@@ -117,8 +117,17 @@ func TestFindEndpoint_Header(t *testing.T) {
 
 	h := NewHandler(cfg)
 	reqURL, _ := url.ParseRequestURI("/users/1")
-	header := http.Header{"X-Version": []string{"2.0.0"}}
+
+	header := http.Header{}
 	endpoint := h.findEndpoint("GET", reqURL, header)
+	assert.Equal(t, cfg.Endpoints[0], *endpoint)
+
+	header = http.Header{"X-Version": []string{"1.0.0"}}
+	endpoint = h.findEndpoint("GET", reqURL, header)
+	assert.Equal(t, cfg.Endpoints[0], *endpoint)
+
+	header = http.Header{"X-Version": []string{"2.0.0"}}
+	endpoint = h.findEndpoint("GET", reqURL, header)
 	assert.Equal(t, cfg.Endpoints[1], *endpoint)
 }
 

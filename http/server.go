@@ -1,8 +1,10 @@
 package http
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"html/template"
 	"io"
 	"io/ioutil"
 	"log"
@@ -29,30 +31,35 @@ func NewHandler(cfg stubserver.Config) *Handler {
 }
 
 func (h *Handler) Init(router *fdhttp.Router) {
-	router.StdGET("/*", h.Generic)
-	router.StdPOST("/*", h.Generic)
-	router.StdPUT("/*", h.Generic)
-	router.StdDELETE("/*", h.Generic)
+	router.StdGET("/*anything", h.Generic)
+	router.StdPOST("/*anything", h.Generic)
+	router.StdPUT("/*anything", h.Generic)
+	router.StdDELETE("/*anything", h.Generic)
 }
 
 func (h *Handler) findEndpoint(method string, reqURL *url.URL, reqHeader http.Header) *stubserver.ConfigRequest {
-	var (
-		defaultEndpoint   *stubserver.ConfigRequest
-		bestMatchEndpoint *stubserver.ConfigRequest
-	)
+	var endpointFound = struct {
+		PassedMethod      bool
+		PassedURL         bool
+		PassedQueryString bool
+		PassedHeaders     bool
+		Endpoint          *stubserver.ConfigRequest
+	}{}
+
 	if len(h.cfg.Endpoints) > 0 {
-		defaultEndpoint = &h.cfg.Endpoints[0]
+		endpointFound.Endpoint = &h.cfg.Endpoints[0]
 	}
 
 	for k, endpoint := range h.cfg.Endpoints {
-		// Only check endpoints with the right method
 		if !strings.EqualFold(method, endpoint.Method) {
+			h.DebugLogger.Printf("%s %s: doesn't match method '%s' endpoint=%s", method, reqURL, endpoint.Method, endpoint.URL)
 			continue
 		}
 
-		// if our default is not with the method requested, let's update the default
-		if defaultEndpoint.Method != endpoint.Method {
-			defaultEndpoint = &h.cfg.Endpoints[k]
+		if !endpointFound.PassedMethod {
+			h.DebugLogger.Printf("%s %s: match method '%s' endpoint=%s", method, reqURL, endpoint.Method, endpoint.URL)
+			endpointFound.PassedMethod = true
+			endpointFound.Endpoint = &h.cfg.Endpoints[k]
 		}
 
 		if strings.HasPrefix(endpoint.URL, "~") {
@@ -60,51 +67,67 @@ func (h *Handler) findEndpoint(method string, reqURL *url.URL, reqHeader http.He
 
 			regex := regexp.MustCompile(endpointURL)
 			if ok := regex.MatchString(reqURL.String()); ok {
-				bestMatchEndpoint = &h.cfg.Endpoints[k]
+				if !endpointFound.PassedURL {
+					h.DebugLogger.Printf("%s %s: match regex '%s'", method, reqURL, endpoint.URL)
+					endpointFound.PassedURL = true
+					endpointFound.Endpoint = &h.cfg.Endpoints[k]
+				}
+			} else {
+				h.DebugLogger.Printf("%s %s: doesn't match regex %s", method, reqURL, endpointURL)
+			}
+
+			continue
+		} else {
+			endpointURL, _ := url.ParseRequestURI(endpoint.URL)
+			if !strings.EqualFold(reqURL.EscapedPath(), endpointURL.EscapedPath()) {
 				continue
 			}
-			h.DebugLogger.Printf("%s doesn't match regex, url requested %s", endpointURL, reqURL)
 
-			continue
-		}
+			if !endpointFound.PassedURL {
+				h.DebugLogger.Printf("%s %s: match URL '%s'", method, reqURL, endpoint.URL)
+				endpointFound.PassedURL = true
+				endpointFound.Endpoint = &h.cfg.Endpoints[k]
+			}
 
-		endpointURL, _ := url.ParseRequestURI(endpoint.URL)
-		if !strings.EqualFold(reqURL.EscapedPath(), endpointURL.EscapedPath()) {
-			continue
+			match := true
+
+			reqQuery := reqURL.Query()
+			for k, ev := range endpointURL.Query() {
+				if rv, ok := reqQuery[k]; ok {
+					if len(ev) > 0 && ev[0] != "" && !strings.EqualFold(ev[0], rv[0]) {
+						h.DebugLogger.Printf("%s %s: doesn't match query string '%s=%s' endpoint=%s", method, reqURL, k, ev, endpointURL)
+						match = false
+						break
+					}
+				} else {
+					h.DebugLogger.Printf("%s %s: doesn't match query string '%s=%s' endpoint=%s", method, reqURL, k, ev, endpointURL)
+					match = false
+					break
+				}
+			}
+
+			if !match {
+				continue
+			}
+
+			if !endpointFound.PassedQueryString && len(endpointURL.Query()) > 0 {
+				h.DebugLogger.Printf("%s %s: match query string endpoint=%s", method, reqURL, endpointURL)
+				endpointFound.PassedQueryString = true
+				endpointFound.Endpoint = &h.cfg.Endpoints[k]
+			}
 		}
 
 		match := true
 
-		reqQuery := reqURL.Query()
-		for k, ev := range endpointURL.Query() {
-			if rv, ok := reqQuery[k]; ok {
-				if len(ev) > 0 && ev[0] != "" && !strings.EqualFold(ev[0], rv[0]) {
-					h.DebugLogger.Printf("%s doesn't match query string '%s=%s', url requested %s", endpointURL, k, ev, reqURL)
-					match = false
-					break
-				}
-			} else {
-				h.DebugLogger.Printf("%s doesn't match query string '%s=%s', url requested %s", endpointURL, k, ev, reqURL)
-				match = false
-				break
-			}
-		}
-
-		if !match {
-			continue
-		}
-		h.DebugLogger.Printf("%s match query string, url requested %s", endpointURL, reqURL)
-		bestMatchEndpoint = &h.cfg.Endpoints[k]
-
 		for k, ev := range endpoint.Headers {
 			if rv, ok := reqHeader[k]; ok {
 				if len(ev) > 0 && ev[0] != "" && !strings.EqualFold(ev[0], rv[0]) {
-					h.DebugLogger.Printf("%s doesn't match header '%s=%s', url requested %s", endpointURL, k, ev, reqURL)
+					h.DebugLogger.Printf("%s %s: doesn't match header '%s=%s' endpoint=%s", method, reqURL, k, ev, endpoint.URL)
 					match = false
 					break
 				}
 			} else {
-				h.DebugLogger.Printf("%s doesn't match header '%s=%s', url requested %s", endpointURL, k, ev, reqURL)
+				h.DebugLogger.Printf("%s %s: doesn't match header '%s=%s' endpoint=%s", method, reqURL, k, ev, endpoint.URL)
 				match = false
 				break
 			}
@@ -113,15 +136,23 @@ func (h *Handler) findEndpoint(method string, reqURL *url.URL, reqHeader http.He
 		if !match {
 			continue
 		}
-		h.DebugLogger.Printf("%s match headers, url requested %s", endpointURL, reqURL)
-		bestMatchEndpoint = &h.cfg.Endpoints[k]
+
+		if !endpointFound.PassedHeaders {
+			h.DebugLogger.Printf("%s %s: match header endpoint=%s", method, reqURL, endpoint.URL)
+			endpointFound.PassedHeaders = true
+			endpointFound.Endpoint = &h.cfg.Endpoints[k]
+		}
 	}
 
-	if bestMatchEndpoint != nil {
-		return bestMatchEndpoint
-	}
+	return endpointFound.Endpoint
+}
 
-	return defaultEndpoint
+func sendResponseBody(w http.ResponseWriter, body io.Reader) {
+	buf := bufio.NewScanner(body)
+	fmt.Println(buf.Text())
+
+	tmpl := template.Must(template.New("body").Parse(buf.Text()))
+	tmpl.Execute(w, map[string]interface{}{})
 }
 
 func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
@@ -156,8 +187,8 @@ func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
 				w.Header().Add(k, v)
 			}
 		}
-		w.WriteHeader(endpoint.Response.StatusCode)
 
-		io.Copy(w, body)
+		w.WriteHeader(endpoint.Response.StatusCode)
+		sendResponseBody(w, body)
 	}
 }
