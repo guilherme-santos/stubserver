@@ -35,7 +35,7 @@ var serveCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := os.Open(args[0])
+		f, err := os.Open(cfgFile)
 		if err != nil {
 			cmd.Println(err)
 			os.Exit(1)
