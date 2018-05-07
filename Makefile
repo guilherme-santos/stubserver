@@ -14,3 +14,6 @@ build:
 
 run: build
 	@export `cat ${mkfile_path}.env | xargs`; ./cmd/stubserver/stubserver serve -config example.yml
+
+install: build
+	cd cmd/stubserver && go install
