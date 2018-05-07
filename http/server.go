@@ -1,7 +1,6 @@
 package http
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"html/template"
@@ -147,12 +146,31 @@ func (h *Handler) findEndpoint(method string, reqURL *url.URL, reqHeader http.He
 	return endpointFound.Endpoint
 }
 
-func sendResponseBody(w http.ResponseWriter, body io.Reader) {
-	buf := bufio.NewScanner(body)
-	fmt.Println(buf.Text())
+func templateBody(w http.ResponseWriter, req *http.Request, endpoint *stubserver.ConfigRequest, body io.Reader) io.Reader {
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(body)
+	tmpl := template.Must(template.New("body").Parse(buf.String()))
 
-	tmpl := template.Must(template.New("body").Parse(buf.Text()))
-	tmpl.Execute(w, map[string]interface{}{})
+	data := map[string]interface{}{}
+
+	if strings.HasPrefix(endpoint.URL, "~") {
+		endpointURL := strings.TrimSpace(endpoint.URL[1:])
+		regex := regexp.MustCompile(endpointURL)
+		params := regex.FindStringSubmatch(req.RequestURI)
+		data["RouteParam"] = params[1:]
+	} else {
+		q := req.URL.Query()
+		query := map[string]string{}
+		for k, v := range q {
+			query[k] = v[0]
+		}
+		data["Query"] = query
+	}
+	data["Request"] = req
+
+	buf.Reset()
+	tmpl.Execute(buf, data)
+	return buf
 }
 
 func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
@@ -189,6 +207,8 @@ func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
 		}
 
 		w.WriteHeader(endpoint.Response.StatusCode)
-		sendResponseBody(w, body)
+
+		body := templateBody(w, req, endpoint, body)
+		io.Copy(w, body)
 	}
 }
