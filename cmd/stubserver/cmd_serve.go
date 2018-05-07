@@ -13,14 +13,26 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-var cfgFile string
+var (
+	cfgFile string
+	port    string
+)
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Run http server",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		// TODO: check if envvar exists but don't override flag command
-		os.Getenv("STUBSERVER_PORT")
+		portFlag := cmd.Flag("port")
+		if !portFlag.Changed {
+			if portEnv, ok := os.LookupEnv("STUBSERVER_PORT"); ok {
+				port = portEnv
+			}
+		}
+
+		if port == "" {
+			cmd.Printf("Error: required flag \"%s\" or STUBSERVER_PORT envvar is not set\n", portFlag.Name)
+			os.Exit(1)
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		f, err := os.Open(args[0])
@@ -47,7 +59,7 @@ var serveCmd = &cobra.Command{
 		handler := http.NewHandler(cfg)
 		router.Register(handler)
 
-		srv := fdhttp.NewServer(os.Getenv("STUBSERVER_PORT"))
+		srv := fdhttp.NewServer(port)
 		var errChan chan error
 		go func() {
 			errChan <- srv.Start(router)
@@ -73,6 +85,7 @@ var serveCmd = &cobra.Command{
 
 func init() {
 	serveCmd.Flags().StringVarP(&cfgFile, "config", "c", "", "config file with spec of your stubs")
+	serveCmd.Flags().StringVarP(&port, "port", "p", "80", "port to run the server or specify using STUBSERVER_PORT envvar")
 	serveCmd.MarkFlagRequired("config")
 	rootCmd.AddCommand(serveCmd)
 }
