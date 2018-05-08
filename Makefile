@@ -1,8 +1,9 @@
 mkfile_path := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-tag       := $(shell git describe --tags --exact-match 2> /dev/null || git symbolic-ref -q --short HEAD)
-build     := $(shell git rev-parse --short HEAD)
-buildargs = -ldflags "-X main.version=$(tag) -X main.build=$(build)" -v
+tag       = $(shell git describe --tags --exact-match 2> /dev/null || git symbolic-ref -q --short HEAD)
+build     = $(shell git rev-parse --short HEAD)
+date      = $(shell date "+%Y-%m-%d")
+buildargs = -ldflags "-X main.version=$(tag) -X main.build=$(build)" -X main.buildDate=${date} -v
 
 all: test build
 
