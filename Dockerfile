@@ -22,8 +22,8 @@ RUN make build-static install
 FROM alpine:3.7
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /go/src/github.com/guilherme-santos/stubserver/cmd/stubserver /usr/local/bin/
+COPY --from=builder /go/bin/stubserver /usr/local/bin/
 
 EXPOSE 80
 
-CMD ["stubserver", "-c", "config.yml"]
+CMD stubserver serve -c config.yml
