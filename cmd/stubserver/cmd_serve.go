@@ -79,7 +79,7 @@ var serveCmd = &cobra.Command{
 			log.Fatal("Cannot run http server: ", err)
 		}
 
-		log.Println("Stubserver stopped succesfuly!")
+		log.Println("Stubserver stopped successfully!")
 	},
 }
 
