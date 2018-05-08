@@ -19,7 +19,7 @@ type ConfigRequest struct {
 	Method  string
 	Headers http.Header
 	// Response can be string or ConfigResponse
-	// see MarshalYAML to more details
+	// see UnmarshalYAML to more details
 	Response ConfigResponse
 }
 
