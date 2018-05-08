@@ -4,7 +4,7 @@ FROM golang:1.10-alpine as builder
 
 RUN apk update \
     && apk upgrade \
-    && apk add --no-cache git bash make \
+    && apk add --no-cache git bash make curl \
     && curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 
 WORKDIR /go/src/github.com/guilherme-santos/stubserver
@@ -24,7 +24,7 @@ FROM alpine:3.7
 WORKDIR /root/
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /go/src/github.com/guilherme-santos/stubserver/stubserver .
+COPY --from=builder /go/src/github.com/guilherme-santos/stubserver/cmd/stubserver .
 
 EXPOSE 80
 
