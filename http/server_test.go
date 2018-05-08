@@ -1,9 +1,12 @@
 package http_test
 
 import (
+	"bytes"
 	gohttp "net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/guilherme-santos/stubserver"
@@ -51,7 +54,7 @@ func TestGeneric_SendData(t *testing.T) {
 			{
 				Response: stubserver.ConfigResponse{
 					Data:       "my-data",
-					StatusCode: gohttp.StatusCreated,
+					StatusCode: gohttp.StatusOK,
 				},
 			},
 		},
@@ -73,7 +76,7 @@ func TestGeneric_SendDataAsTemplate(t *testing.T) {
 			{
 				Response: stubserver.ConfigResponse{
 					Data:       `{{.Request.Method}} {{.Request.Host}} {{.Query.query}} {{index (index .Request.Header "Content-Type") 0}}`,
-					StatusCode: gohttp.StatusCreated,
+					StatusCode: gohttp.StatusOK,
 				},
 			},
 		},
@@ -88,6 +91,57 @@ func TestGeneric_SendDataAsTemplate(t *testing.T) {
 
 	h.Generic(w, req)
 	assert.Equal(t, "PUT stubserver:8080 string application/json", w.Body.String())
+}
+
+func TestGeneric_SendDataTemplateWithForm(t *testing.T) {
+	cfg := stubserver.Config{
+		Endpoints: []stubserver.ConfigRequest{
+			{
+				Response: stubserver.ConfigResponse{
+					Data:       `{{.Request.FormValue "first_name"}} {{.Request.FormValue "last_name"}}`,
+					StatusCode: gohttp.StatusOK,
+				},
+			},
+		},
+	}
+
+	h := http.NewHandler(cfg)
+
+	w := httptest.NewRecorder()
+	data := url.Values{
+		"first_name": {"Guilherme"},
+		"last_name":  {"Silveira"},
+	}
+	req, err := gohttp.NewRequest(gohttp.MethodPost, "http://stubserver:8080/test", strings.NewReader(data.Encode()))
+	assert.NoError(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	h.Generic(w, req)
+	assert.Equal(t, "Guilherme Silveira", w.Body.String())
+}
+
+func TestGeneric_SendDataTemplateWithJSON(t *testing.T) {
+	cfg := stubserver.Config{
+		Endpoints: []stubserver.ConfigRequest{
+			{
+				Response: stubserver.ConfigResponse{
+					Data:       `{{.JSON.user.first_name}} {{.JSON.user.last_name}}`,
+					StatusCode: gohttp.StatusOK,
+				},
+			},
+		},
+	}
+
+	h := http.NewHandler(cfg)
+
+	w := httptest.NewRecorder()
+	data := `{"user": {"first_name": "Guilherme","last_name": "Silveira"}}`
+	req, err := gohttp.NewRequest(gohttp.MethodPost, "http://stubserver:8080/test", bytes.NewReader([]byte(data)))
+	assert.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	h.Generic(w, req)
+	assert.Equal(t, "Guilherme Silveira", w.Body.String())
 }
 
 func TestGeneric_SendDataAsFile(t *testing.T) {

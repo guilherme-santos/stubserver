@@ -3,6 +3,7 @@ package http
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -171,7 +172,18 @@ func templateBody(w http.ResponseWriter, req *http.Request, endpoint *stubserver
 		}
 		data["Query"] = query
 	}
+
+	req.ParseForm()
 	data["Request"] = req
+
+	if req.Body != nil && req.Header.Get("Content-Type") == "application/json" {
+		if body, err := ioutil.ReadAll(req.Body); err == nil {
+			var j map[string]interface{}
+			if err := json.Unmarshal(body, &j); err == nil {
+				data["JSON"] = j
+			}
+		}
+	}
 
 	buf := new(bytes.Buffer)
 	tmpl.Execute(buf, data)
