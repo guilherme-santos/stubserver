@@ -21,10 +21,8 @@ RUN make build-static install
 
 FROM alpine:3.7
 
-WORKDIR /root/
-
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /go/src/github.com/guilherme-santos/stubserver/cmd/stubserver .
+COPY --from=builder /go/src/github.com/guilherme-santos/stubserver/cmd/stubserver /usr/local/bin/
 
 EXPOSE 80
 
