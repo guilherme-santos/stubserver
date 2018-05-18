@@ -17,7 +17,7 @@ build-static:
 	cd cmd/stubserver && CGO_ENABLED=0 go build -a -installsuffix cgo $(buildargs)
 
 run: build
-	@export `cat ${mkfile_path}.env | xargs`; ./cmd/stubserver/stubserver serve -config example.yml
+	@export `cat ${mkfile_path}.env | xargs`; ./cmd/stubserver/stubserver serve --config example.yml
 
 install:
 	cd cmd/stubserver && go install
