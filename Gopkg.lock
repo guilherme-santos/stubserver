@@ -11,7 +11,7 @@
   branch = "v2"
   name = "github.com/foodora/go-ranger"
   packages = ["fdhttp"]
-  revision = "3acc1b78aed496404ebaddafe14e27331591b8be"
+  revision = "24e095335da4e39f350fb0ad9aa117085cbe3748"
 
 [[projects]]
   name = "github.com/inconshreveable/mousetrap"
