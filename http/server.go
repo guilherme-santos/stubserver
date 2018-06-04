@@ -251,6 +251,7 @@ func (h *Handler) Generic(w http.ResponseWriter, req *http.Request) {
 					"error":   "invalid_response",
 					"message": fmt.Sprintf("cannot open response file: %s", err),
 				})
+				return
 			}
 
 			var (
